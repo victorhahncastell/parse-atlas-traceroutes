@@ -3,6 +3,7 @@ from ipaddress import ip_address
 import logging
 from importlib import import_module
 from datetime import datetime
+from collections import OrderedDict
 
 try:
     json = import_module('simplejson')
@@ -141,7 +142,7 @@ class ICMPTraceroute:
     @property
     def hops(self):
         if self._hops is None:
-            self._hops = {}
+            self._hops = OrderedDict()
             for h in self.rawdata['result']:
                 hop = ICMPHop(h)
                 self._hops[h['hop']] = hop
