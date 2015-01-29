@@ -64,6 +64,9 @@ class ICMPHop:
         self.number = data['hop']
         self._answers = None
 
+    def __str__(self):
+        return '{h.endpoints} TTL: {h.ttl} RTT: {h.rtt}'.format(h=self)
+
     @property
     def all_answers(self):
         if self._answers is None:
