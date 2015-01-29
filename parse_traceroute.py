@@ -87,7 +87,10 @@ class ICMPHop:
         for a in self.answers:
             count += 1
             asum += getattr(a, attr)
-        return asum / count
+        if count == 0:
+            return 'No answers'
+        else:
+            return asum / count
 
     @property
     def rtt(self):
