@@ -63,9 +63,13 @@ class ICMPHop:
         self.rawdata = data
         self.number = data['hop']
         self._answers = None
+        self._endpoints = None
 
     def __str__(self):
-        return '{h.endpoints} TTL: {h.ttl} RTT: {h.rtt}'.format(h=self)
+        if len(list(self.answers)) < 1:
+            return 'No answers'
+        else:
+            return '{h.endpoints} TTL: {h.ttl:.2f} RTT: {h.rtt:.2f}'.format(h=self)
 
     @property
     def all_answers(self):
@@ -102,7 +106,9 @@ class ICMPHop:
 
     @property
     def endpoints(self):
-        return set(map(lambda a: a.ip, self.answers))
+        if self._endpoints is None:
+            self._endpoints = set(map(lambda a: a.ip, self.answers))
+        return ', '.join(map(str, self._endpoints))
 
 
 class ICMPTraceroute:
