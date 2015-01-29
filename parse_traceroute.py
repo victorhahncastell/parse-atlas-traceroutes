@@ -77,7 +77,7 @@ class ICMPHop:
 
     @property
     def answers(self):
-        for a in self.answers:
+        for a in self.all_answers:
             if not a.no_answer:
                 yield a
 
