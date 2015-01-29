@@ -87,11 +87,11 @@ class ICMPHop:
         return asum / count
 
     @property
-    def average_rtt(self):
+    def rtt(self):
         return self.get_average('rtt')
 
     @property
-    def average_ttl(self):
+    def ttl(self):
         return self.get_average('ttl')
 
     @property
