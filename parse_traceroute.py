@@ -32,7 +32,7 @@ class ICMPAnswer:
     #     "rfc4884": 0,
     #     "version": 2
     # }
-    def __init(self, data):
+    def __init__(self, data):
         self.no_answer = data.get('x') == '*'
         self.rawdata = data
 
