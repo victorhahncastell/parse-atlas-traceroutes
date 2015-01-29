@@ -139,6 +139,15 @@ class ICMPTraceroute:
             result.append(' ' * 2 + '{:>2}: '.format(num) + str(hop))
         return '\n'.join(result)
 
+    def __repr__(self):
+        result = list()
+        for hop in self.hops.values():
+            if hop.endpoints == '':
+                result.append('*')
+            else:
+                result.append(hop.endpoints)
+        return ';'.join(result)
+
     @property
     def hops(self):
         if self._hops is None:
