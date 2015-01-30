@@ -161,9 +161,11 @@ class ICMPTraceroute:
             ownset = hop.endpointset
             otherhop = other.hops.get(num)
             if otherhop is None:
+                # route length changed
                 return False
             otherset = otherhop.endpointset
             if len(ownset) < 1 or len(otherset) < 1:
+                # No answers received for one of the trace hops, compare the next one
                 continue
             elif not ownset == otherset:
                 return False
