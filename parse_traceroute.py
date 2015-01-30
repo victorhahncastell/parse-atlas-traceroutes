@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from functools import lru_cache
 from ipaddress import ip_address
 import logging
 from importlib import import_module
@@ -61,8 +62,9 @@ class ICMPAnswer:
 
 
 class ICMPHop:
-    def __init__(self, data):
+    def __init__(self, controller, data):
         assert 'hop' in data, "C'est ne pas une ICMP hop!"
+        self.c = controller
         self.rawdata = data
         self.number = data['hop']
         self._answers = None
@@ -72,7 +74,7 @@ class ICMPHop:
         if len(list(self.answers)) < 1:
             return 'No answers'
         else:
-            return '{h.endpoints} TTL: {h.ttl:.2f} RTT: {h.rtt:.2f}'.format(h=self)
+            return '{} TTL: {h.ttl:.2f} RTT: {h.rtt:.2f}ms'.format(self.c.res.ip(self.endpoints), h=self)
 
     @property
     def all_answers(self):
@@ -128,7 +130,8 @@ class ICMPTraceroute:
     # "msm_name": "Traceroute",
     # "paris_id": 7,
     # "prb_id": 11572,
-    def __init__(self, data):
+    def __init__(self, controller, data):
+        self.c = controller
         # Just in case someone decides to pipe in bogus data
         msg = 'This is not an ICMP traceroute! THIS IS SPARTA!'
         assert data['type'] == 'traceroute' and data['proto'] == 'ICMP', msg
@@ -176,7 +179,7 @@ class ICMPTraceroute:
         if self._hops is None:
             self._hops = OrderedDict()
             for h in self.rawdata['result']:
-                hop = ICMPHop(h)
+                hop = ICMPHop(self.c, h)
                 self._hops[h['hop']] = hop
         return self._hops
 
@@ -217,26 +220,33 @@ class ICMPTraceroute:
         return self.end - self.start
 
 
-class RIPEAtlas:
+class Measurement:
     types = {
         ('traceroute', 'ICMP'): ICMPTraceroute,
     }
 
-    def __init__(self, data, limit_probes = []):
+    def __init__(self, controller, data, limit_probes = []):
+        self.c = controller
         self.l = logging.getLogger(__name__ + '.' + self.__class__.__name__)
-        self.rawdata = data
         self.limit_probes = limit_probes
 
-    def __iter__(self):
+        # Save raw data and parse it into objects
+        self.rawdata = data
+        self.content = []
+        self.parse()
+
+    def parse(self):
         for entry in self.rawdata:
             type = self.entry_type(entry) # if this is a valid entry we understand, get its class
             if type:
-                obj = type(entry)         # build nice and shiny object from raw data
+                obj = type(self.c, entry)         # build nice and shiny object from raw data
 
                 # Finally, check if additional constraints are met and if so, return this object.
                 valid = (not self.limit_probes or obj.probe in self.limit_probes)
                 if valid:
-                    yield obj
+                    self.content.append(obj)
+            else:
+                l.warn("Raw data contains an entry I don't understand: " + entry)
 
     def entry_type(self, entry):
         type_signature = (entry['type'], entry['proto'])
@@ -244,9 +254,42 @@ class RIPEAtlas:
 
 
 class Controller:
+    def __init__(self):
+        # First, parse the command line arguments:
+        from argparse import ArgumentParser, FileType
+        parser = ArgumentParser()
+        parser.add_argument('--loglevel', default='ERROR', choices=['INFO', 'DEBUG', 'WARN', 'ERROR'], help="Log level")
+        parser.add_argument('--probe', '-p', type=int, help='Probe ID. If specified, only consider results from this probe.', action='append')
+        parser.add_argument('--numerical', '-n', help="Print IP addresses and other stuff numerically, do not resolve online", action='store_const', const=True)
+        parser.add_argument('command', choices=['stability', 'print'], help="Select what to do.")
+        parser.add_argument('file', type=FileType(), help='JSON file')
+        args = parser.parse_args()
+
+        # Controllers provide a resolver which looks up IP addresses and stuff online.
+        # If the user specified the numerical flag, this resolver is just a dummy.
+        self._res = Resolver(self, args.numerical)
+
+        loglevel = getattr(logging, args.loglevel.upper(), None)
+        if not isinstance(loglevel, int):
+            raise ValueError('Invalid log level: {}'.format(args.loglevel))
+        logging.basicConfig(level=loglevel)
+
+        self.mesasurement = Measurement(self, json.load(args.file), args.probe)
+
+        if args.command == "print":
+            self.trace_print()
+        if args.command == 'stability':
+            self.route_stability()
+
+
+    @property
+    def res(self):
+        return self._res
+
+
     def route_stability(self):
         tracelist = defaultdict(OrderedDict)
-        for trace in self.ra:
+        for trace in self.mesasurement.content:
             tracelist[trace.probe][trace.start] = trace
         for startpoint, traces in tracelist.items():
             errors = list()
@@ -271,35 +314,60 @@ class Controller:
 
 
     def trace_print(self):
-        for trace in self.ra:
+        for trace in self.mesasurement.content:
             print(trace)
             print()
 
 
-    def run(self):
-        from argparse import ArgumentParser, FileType
 
-        parser = ArgumentParser()
-        parser.add_argument('--loglevel', default='ERROR', choices=['INFO', 'DEBUG', 'WARN', 'ERROR'], help="Log level")
-        parser.add_argument('--probe', '-p', type=int, help='Probe ID. If specified, only consider results from this probe.', action='append')
-        parser.add_argument('command', choices=['stability', 'print'], help="Select what to do.")
-        parser.add_argument('file', type=FileType(), help='JSON file')
-        args = parser.parse_args()
+class Resolver:
+    def __init__(self, controller, num):
+        self.c = controller
+        self.num = num
 
-        loglevel = getattr(logging, args.loglevel.upper(), None)
-        if not isinstance(loglevel, int):
-            raise ValueError('Invalid log level: {}'.format(args.loglevel))
-        logging.basicConfig(level=loglevel)
+        if not self.num:
+            try:
+                import socket
+                self.socket = socket
+                self.socket.setdefaulttimeout(1)
+                from cymruwhois import Client as CymruClient
+                self.whois = CymruClient()
+            except ImportError as e:
+                l.error("Could not load module cymruwhois. IP addresses and stuff will be printed as is and not be resolved. Error was: " + e.__str__())
+                self.num = True
 
-        self.ra = RIPEAtlas(json.load(args.file), args.probe)
+    @lru_cache(1500)
+    def lookup(self, what):
+        try:
+            res = self.whois.lookup(what) # get Whois
+        except Exception as e:
+            l.warn("Whois failed! Error was: " + e.__str__())
+            return False
 
-        if args.command == "print":
-            self.trace_print()
-        if args.command == 'stability':
-            self.route_stability()
+        try:
+            dnsres = self.socket.gethostbyaddr(what)
+        except OSError as e:
+            dnsres = [what]
+
+        res.__dict__['dns'] = dnsres[0]
+        return res
 
 
+    def ip(self, addr):
+        if self.num:
+            return self.ip_num(addr)
+        else:
+            return self.ip_res(addr)
 
+    def ip_num(self, addr):
+        return addr
+
+    def ip_res(self, addr):
+        info = self.lookup(addr)
+        if info:
+            return info.dns + " (" + addr + ") in AS " + info.asn + " " + info.owner
+        else:
+            return self.ip_num(addr)
 
 def pairwise(iterable):
     """
@@ -318,7 +386,6 @@ def pairwise_compare(elements):
 
 def main():
     c = Controller()
-    c.run()
 
 if __name__ == '__main__':
     main()
