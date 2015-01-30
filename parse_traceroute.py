@@ -218,15 +218,72 @@ class RIPEAtlas:
         ('traceroute', 'ICMP'): ICMPTraceroute,
     }
 
-    def __init__(self, data):
+    def __init__(self, data, limit_probes = False):
         self.l = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.rawdata = data
+        self.limit_probes = limit_probes
 
     def __iter__(self):
         for entry in self.rawdata:
-            type_signature = (entry['type'], entry['proto'])
-            if type_signature in self.types:
-                yield self.types[type_signature](entry)
+            type = self.entry_type(entry)
+            if type:
+                yield type(entry)
+
+    def entry_type(self, entry):
+        type_signature = (entry['type'], entry['proto'])
+        return self.types[type_signature]
+
+
+class Controller:
+    def route_stability(self):
+        tracelist = defaultdict(OrderedDict)
+        for trace in self.ra:
+            tracelist[trace.ip][trace.start] = trace
+        for startpoint, traces in tracelist.items():
+            errors = list()
+            errors_occured = False
+            l.info('Comparing routes for {}'.format(startpoint))
+            first = None
+            last = None
+            for a, b in pairwise(traces.values()):
+                if first is None:
+                    first = a
+                last = b
+                if a != b:
+                    l.warn('Route changed for {} between {} and {}!'.format(startpoint, a.start, b.start))
+                    errors.append((a, b))
+                    errors_occured = True
+                else:
+                    l.debug('No change for {} between {} and {}'.format(startpoint, a.start, b.start))
+            if errors_occured:
+                print('Route changed {}/{} times for {} in {}'.format(len(errors), len(traces), startpoint, last.start - first.start))
+            else:
+                print('Route stable for {}'.format(startpoint))
+
+
+    def run(self):
+        from argparse import ArgumentParser, FileType
+
+        parser = ArgumentParser()
+        parser.add_argument('--loglevel', default='ERROR', choices=['INFO', 'DEBUG', 'WARN', 'ERROR'], help="Log level")
+        #parser.add_argument('--probe', '-p', type=int, help='Probe ID. If specified, only consider results from this probe.')
+        #parser.add_argument('command', choices=['stability'], help="Select what to do.")
+        parser.add_argument('file', type=FileType(), help='JSON file')
+        args = parser.parse_args()
+
+        loglevel = getattr(logging, args.loglevel.upper(), None)
+        if not isinstance(loglevel, int):
+            raise ValueError('Invalid log level: {}'.format(args.loglevel))
+        logging.basicConfig(level=loglevel)
+
+        self.ra = RIPEAtlas(json.load(args.file))
+
+        #if args.command == "print":
+        #    self.trace_print()
+        #if args.command == 'stability':
+        self.route_stability()
+
+
 
 
 def pairwise(iterable):
@@ -245,41 +302,8 @@ def pairwise_compare(elements):
 
 
 def main():
-    from argparse import ArgumentParser, FileType
-
-    parser = ArgumentParser()
-    parser.add_argument('--loglevel', default='INFO', help="Loglevel", action='store')
-    parser.add_argument('file', type=FileType(), help='JSON file')
-    args = parser.parse_args()
-    loglevel = getattr(logging, args.loglevel.upper(), None)
-    if not isinstance(loglevel, int):
-        raise ValueError('Invalid log level: {}'.format(args.loglevel))
-    logging.basicConfig(level=loglevel)
-    ra = RIPEAtlas(json.load(args.file))
-    tracelist = defaultdict(OrderedDict)
-    for trace in ra:
-        tracelist[trace.ip][trace.start] = trace
-    for startpoint, traces in tracelist.items():
-        errors = list()
-        errors_occured = False
-        l.info('Comparing routes for {}'.format(startpoint))
-        first = None
-        last = None
-        for a, b in pairwise(traces.values()):
-            if first is None:
-                first = a
-            last = b
-            if a != b:
-                l.warn('Route changed for {} between {} and {}!'.format(startpoint, a.start, b.start))
-                errors.append((a, b))
-                errors_occured = True
-            else:
-                l.debug('No change for {} between {} and {}'.format(startpoint, a.start, b.start))
-        if errors_occured:
-            l.error('Route changed {}/{} times for {} in {}'.format(len(errors), len(traces), startpoint, last.start - first.start))
-        else:
-            l.info('No errors for {}'.format(startpoint))
+    c = Controller()
+    c.run()
 
 if __name__ == '__main__':
     main()
-
