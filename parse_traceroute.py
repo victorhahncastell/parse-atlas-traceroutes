@@ -44,6 +44,7 @@ class ICMPAnswer:
 
     @property
     def ip(self):
+        self.check_answer()
         return ip_address(self.rawdata['from'])
 
     @property
