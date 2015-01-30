@@ -3,7 +3,8 @@ from ipaddress import ip_address
 import logging
 from importlib import import_module
 from datetime import datetime
-from collections import OrderedDict
+from collections import defaultdict, OrderedDict
+from itertools import tee
 
 try:
     json = import_module('simplejson')
@@ -222,6 +223,21 @@ class RIPEAtlas:
                 yield self.types[type_signature](entry)
 
 
+def pairwise(iterable):
+    """
+    s -> (s0,s1), (s1,s2), (s2, s3), ...
+    Stolen from https://docs.python.org/3/library/itertools.html#recipes
+    """
+    a, b = tee(iterable)
+    next(b, None)
+    return zip(a, b)
+
+
+def pairwise_compare(elements):
+    for a, b in pairwise(elements):
+        yield a == b
+
+
 def main():
     from argparse import ArgumentParser, FileType
 
@@ -234,9 +250,12 @@ def main():
         raise ValueError('Invalid log level: {}'.format(args.loglevel))
     logging.basicConfig(level=loglevel)
     ra = RIPEAtlas(json.load(args.file))
+    tracelist = defaultdict(OrderedDict)
     for trace in ra:
-        print(trace)
-
+        tracelist[trace.ip][trace.start] = trace
+    for startpoint, traces in tracelist.items():
+        if not all(pairwise_compare(traces.values())):
+            print('Routes for {} changed!'.format(startpoint))
 
 if __name__ == '__main__':
     main()
