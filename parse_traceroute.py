@@ -197,6 +197,10 @@ class ICMPTraceroute:
         return (self.rawdata['dst_name'], self.dst_addr)
 
     @property
+    def probe(self):
+        return (self.rawdata['prb_id'])
+
+    @property
     def ip(self):
         return ip_address(self.rawdata['from'])
 
@@ -218,16 +222,21 @@ class RIPEAtlas:
         ('traceroute', 'ICMP'): ICMPTraceroute,
     }
 
-    def __init__(self, data, limit_probes = False):
+    def __init__(self, data, limit_probes = []):
         self.l = logging.getLogger(__name__ + '.' + self.__class__.__name__)
         self.rawdata = data
         self.limit_probes = limit_probes
 
     def __iter__(self):
         for entry in self.rawdata:
-            type = self.entry_type(entry)
+            type = self.entry_type(entry) # if this is a valid entry we understand, get its class
             if type:
-                yield type(entry)
+                obj = type(entry)         # build nice and shiny object from raw data
+
+                # Finally, check if additional constraints are met and if so, return this object.
+                valid = (not self.limit_probes or obj.probe in self.limit_probes)
+                if valid:
+                    yield obj
 
     def entry_type(self, entry):
         type_signature = (entry['type'], entry['proto'])
@@ -238,7 +247,7 @@ class Controller:
     def route_stability(self):
         tracelist = defaultdict(OrderedDict)
         for trace in self.ra:
-            tracelist[trace.ip][trace.start] = trace
+            tracelist[trace.probe][trace.start] = trace
         for startpoint, traces in tracelist.items():
             errors = list()
             errors_occured = False
@@ -256,9 +265,9 @@ class Controller:
                 else:
                     l.debug('No change for {} between {} and {}'.format(startpoint, a.start, b.start))
             if errors_occured:
-                print('Route changed {}/{} times for {} in {}'.format(len(errors), len(traces), startpoint, last.start - first.start))
+                print('Route changed {}/{} times for probe {} (IP {}) in {}'.format(len(errors), len(traces), startpoint, first.ip, last.start - first.start))
             else:
-                print('Route stable for {}'.format(startpoint))
+                print('Route stable for {} ({} traces)'.format(startpoint, len(traces)))
 
 
     def run(self):
@@ -266,7 +275,7 @@ class Controller:
 
         parser = ArgumentParser()
         parser.add_argument('--loglevel', default='ERROR', choices=['INFO', 'DEBUG', 'WARN', 'ERROR'], help="Log level")
-        #parser.add_argument('--probe', '-p', type=int, help='Probe ID. If specified, only consider results from this probe.')
+        parser.add_argument('--probe', '-p', type=int, help='Probe ID. If specified, only consider results from this probe.', action='append')
         #parser.add_argument('command', choices=['stability'], help="Select what to do.")
         parser.add_argument('file', type=FileType(), help='JSON file')
         args = parser.parse_args()
@@ -276,7 +285,7 @@ class Controller:
             raise ValueError('Invalid log level: {}'.format(args.loglevel))
         logging.basicConfig(level=loglevel)
 
-        self.ra = RIPEAtlas(json.load(args.file))
+        self.ra = RIPEAtlas(json.load(args.file), args.probe)
 
         #if args.command == "print":
         #    self.trace_print()
