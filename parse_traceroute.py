@@ -257,8 +257,9 @@ def main():
     for trace in ra:
         tracelist[trace.ip][trace.start] = trace
     for startpoint, traces in tracelist.items():
-        if not all(pairwise_compare(traces.values())):
-            print('Routes for {} changed!'.format(startpoint))
+        for a, b in pairwise(traces.values()):
+            if a != b:
+                print('Route changed for {} between {} and {}!'.format(startpoint, a.start, b.start))
 
 if __name__ == '__main__':
     main()
