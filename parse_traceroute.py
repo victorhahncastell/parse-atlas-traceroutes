@@ -107,9 +107,13 @@ class ICMPHop:
 
     @property
     def endpoints(self):
+        return ', '.join(map(str, self.endpointset))
+
+    @property
+    def endpointset(self):
         if self._endpoints is None:
             self._endpoints = set(map(lambda a: a.ip, self.answers))
-        return ', '.join(map(str, self._endpoints))
+        return self._endpoints
 
 
 class ICMPTraceroute:
@@ -147,6 +151,18 @@ class ICMPTraceroute:
             else:
                 result.append(hop.endpoints)
         return ';'.join(result)
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            raise ValueError('Cannot compare ICMP Traceroute to {}.'.format(other.__class__))
+        for num, hop in self.hops.items():
+            ownset = hop.endpointset
+            otherset = other.hops[num]._endpoints
+            if len(ownset) < 1 or len(otherset) < 1:
+                continue
+            elif not ownset == otherset:
+                return False
+        return True
 
     @property
     def hops(self):
