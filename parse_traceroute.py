@@ -249,7 +249,7 @@ def main():
 
     parser = ArgumentParser()
     parser.add_argument('--loglevel', default='INFO', help="Loglevel", action='store')
-    parser.add_argument('--file', '-f', type=FileType(), help='JSON file')
+    parser.add_argument('file', type=FileType(), help='JSON file')
     args = parser.parse_args()
     loglevel = getattr(logging, args.loglevel.upper(), None)
     if not isinstance(loglevel, int):
