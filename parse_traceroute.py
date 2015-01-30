@@ -158,7 +158,10 @@ class ICMPTraceroute:
             raise ValueError('Cannot compare ICMP Traceroute to {}.'.format(other.__class__))
         for num, hop in self.hops.items():
             ownset = hop.endpointset
-            otherset = other.hops[num].endpointset
+            otherhop = other.hops.get(num)
+            if otherhop is None:
+                return False
+            otherset = otherhop.endpointset
             if len(ownset) < 1 or len(otherset) < 1:
                 continue
             elif not ownset == otherset:
