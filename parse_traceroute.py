@@ -248,7 +248,7 @@ def main():
     from argparse import ArgumentParser, FileType
 
     parser = ArgumentParser()
-    parser.add_argument('--loglevel', default='WARNING', help="Loglevel", action='store')
+    parser.add_argument('--loglevel', default='INFO', help="Loglevel", action='store')
     parser.add_argument('--file', '-f', type=FileType(), help='JSON file')
     args = parser.parse_args()
     loglevel = getattr(logging, args.loglevel.upper(), None)
