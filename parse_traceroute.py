@@ -137,7 +137,7 @@ class ICMPTraceroute:
 
     def __str__(self):
         result = list()
-        result.append('Traceroute(from={t.ip}, to={t.dst_addr}, src={t.src_addr}, duration={t.duration})'.format(
+        result.append('Traceroute(probe={t.probe}, from={t.ip}, to={t.dst_addr}, src={t.src_addr}, duration={t.duration})'.format(
             t=self
         ))
         result.append('Hops:')
@@ -270,13 +270,19 @@ class Controller:
                 print('Route stable for {} ({} traces)'.format(startpoint, len(traces)))
 
 
+    def trace_print(self):
+        for trace in self.ra:
+            print(trace)
+            print()
+
+
     def run(self):
         from argparse import ArgumentParser, FileType
 
         parser = ArgumentParser()
         parser.add_argument('--loglevel', default='ERROR', choices=['INFO', 'DEBUG', 'WARN', 'ERROR'], help="Log level")
         parser.add_argument('--probe', '-p', type=int, help='Probe ID. If specified, only consider results from this probe.', action='append')
-        #parser.add_argument('command', choices=['stability'], help="Select what to do.")
+        parser.add_argument('command', choices=['stability', 'print'], help="Select what to do.")
         parser.add_argument('file', type=FileType(), help='JSON file')
         args = parser.parse_args()
 
@@ -287,10 +293,10 @@ class Controller:
 
         self.ra = RIPEAtlas(json.load(args.file), args.probe)
 
-        #if args.command == "print":
-        #    self.trace_print()
-        #if args.command == 'stability':
-        self.route_stability()
+        if args.command == "print":
+            self.trace_print()
+        if args.command == 'stability':
+            self.route_stability()
 
 
 
