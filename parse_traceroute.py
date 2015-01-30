@@ -259,18 +259,25 @@ def main():
     tracelist = defaultdict(OrderedDict)
     for trace in ra:
         tracelist[trace.ip][trace.start] = trace
-    errors = list()
     for startpoint, traces in tracelist.items():
+        errors = list()
         errors_occured = False
         l.info('Comparing routes for {}'.format(startpoint))
+        first = None
+        last = None
         for a, b in pairwise(traces.values()):
+            if first is None:
+                first = a
+            last = b
             if a != b:
-                l.error('Route changed for {} between {} and {}!'.format(startpoint, a.start, b.start))
+                l.warn('Route changed for {} between {} and {}!'.format(startpoint, a.start, b.start))
                 errors.append((a, b))
                 errors_occured = True
             else:
                 l.debug('No change for {} between {} and {}'.format(startpoint, a.start, b.start))
-        if not errors_occured:
+        if errors_occured:
+            l.error('Route changed {}/{} times for {} in {}'.format(len(errors), len(traces), startpoint, last.start - first.start))
+        else:
             l.info('No errors for {}'.format(startpoint))
 
 if __name__ == '__main__':
