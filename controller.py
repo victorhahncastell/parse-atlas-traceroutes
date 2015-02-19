@@ -43,14 +43,14 @@ class RouteAnalyzer():
     Determines route changes
     @ivar route_changes: A list of tuples showing route changes for each origin.
     """
-    def __init__(self, measurement, ignore_noreply = False):
+    def __init__(self, measurement, hop_both_unanswered_equal = True, hop_one_unanswered_equal = True,
+                 hop_single_endpoint_equal = False):
         """
         @param measurement: A measurement object (providing the data to analyze)
         @type measurement: Measurement
 
         """
         self.measurement = measurement
-        self.ignore_noreply = ignore_noreply
         self.tracelist = None
         self.route_changes = dict()
 
@@ -66,7 +66,8 @@ class RouteAnalyzer():
             l.info('Comparing routes for {}'.format(startpoint))
 
             for traceA, traceB in pairwise(traces.values()):  # a is an iterator on the current element, b on the next one
-                if traceA != traceB:
+                if traceA.equals(traceB,
+                                 hop_both_unanswered_equal, hop_one_unanswered_equal, hop_single_endpoint_equal):
                     l.warn('Route changed for probe {} between {} and {}!'.format(startpoint, traceA.start, traceB.start))
                     self.route_changes[startpoint].append((traceA, traceB))
                 else:

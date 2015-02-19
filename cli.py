@@ -11,18 +11,64 @@ class CLI:
         from argparse import ArgumentParser, FileType
 
         parser = ArgumentParser()
-        parser.add_argument('--loglevel', default='ERROR', choices=['INFO', 'DEBUG', 'WARN', 'ERROR'], help="Log level", type=str.upper)
-        parser.add_argument('--probe', '-p', type=int,
-                            help='Probe ID. If specified, only consider results from this probe.', action='append')
-        parser.add_argument('--numerical', '-n',
-                            help="Work offline, print stuff numerically, disable any lookups. Short for -d and -w.",
-                            action='store_const', const=True)
-        parser.add_argument('--no-resolve-dns', dest='resolve_dns', help="Don't resolve reverse DNS names.", action='store_false', default=True)
-        parser.add_argument('--no-get-whois', dest='get_whois', help="Do not provide Whois information on IP addresses.", action='store_false', default=True)
-        parser.add_argument('--no-preresolve', dest='preresolve', help="Try to resolve all IP addresses at once.", action='store_false', default=True)
-        parser.add_argument('--details', '-d', help="Amount of details given with results.", type=int, choices=[0,1,2,3], default=0)
-        parser.add_argument('command', choices=['stability', 'print'], help="Select what to do.")
+        parser.add_argument('--loglevel', default='ERROR', choices=['INFO', 'DEBUG', 'WARN', 'ERROR'],
+                            help="Log level", type=str.upper)
+        parser.add_argument('--probe', '-p', type=int, action='append',
+                            help='Probe ID. If specified, only consider results from this probe.')
+        parser.add_argument('--details', '-d', type=int, choices=[0,1,2,3], default=0,
+                            help="Amount of details given with results.")
+        parser.add_argument('--no-stable-both-unans',
+                            help="When comparing traceroutes, consides hops not equal if both received no answers.")
+        parser.add_argument('command', help="Select what to do.", choices=['stability', 'print'])
         parser.add_argument('file', type=FileType(), help='JSON file')
+
+        parser.add_argument('--numerical', '-n', action='store_const', const=True,
+                            help="Work offline, print stuff numerically, disable any lookups. " +
+                                 "Short for --no-resolve-dns and --no-get-whois.")
+
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('--resolve-dns', dest='resolve_dns', action='store_true', default=True,
+                            help="Don't resolve reverse DNS names.")
+        group.add_argument('--no-resolve-dns', dest='resolve_dns', action='store_false',
+                            help="Don't resolve reverse DNS names.")
+
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('--resolve-whois', dest='resolve_whois', action='store_true', default=True,
+                            help="Provide Whois information on IP addresses. Default.")
+        group.add_argument('--no-resolve-whois', dest='resolve_whois', action='store_false',
+                            help="Do not provide Whois information on IP addresses.")
+
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('--preresolve', dest='preresolve', action='store_true', default=True,
+                            help="Try to resolve all IP addresses at once.")
+        group.add_argument('--no-preresolve', dest='preresolve', action='store_false',
+                            help="Don't try to resolve all IP addresses at once.")
+
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('--tracecmp-both-unans', dest='tracecmp_both_unans', action='store_true', default=True,
+                           help="When comparing traceroutes, consider two hops equal if none received " +
+                                "any answers. Default.")
+        group.add_argument('--no-tracecmp-both-unans', dest='tracecmp_both_unans', action='store_false',
+                           help="When comparing traceroutes, don't consider two hops equal if none received " +
+                                "any answers.")
+
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('--tracecmp-one-unans', dest='tracecmp_one_unans', action='store_true',
+                           help="When comparing traceroutes, consider two hops equal if one of them " +
+                                "didn't receive any answers.")
+        group.add_argument('--no-tracecmp-one-unans', dest='tracecmp_one_unans', action='store_false', default=False,
+                           help="When comparing traceroutes, consider two hops equal if one of them " +
+                                "didn't receive any answers. Default.")
+
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('--tracecmp-single-endpoint', dest='tracecmp_single_endpoint', action='store_true',
+                           help="When comparing traceroutes and using more than one ping per hop, " +
+                                "consider two hops equal if any IP address appears in both sets of replies.")
+        group.add_argument('--no-tracecmp-single-endpoint', dest='tracecmp_single_endpoint', action='store_false',
+                           default=False,
+                           help="When comparing traceroutes and using more than one ping per hop, do not" +
+                                "consider two hops equal if any IP address appears in both sets of replies. Default.")
+
         self.args = parser.parse_args()
 
 
@@ -33,9 +79,9 @@ class CLI:
         # Online resolver options:
         if self.args.numerical:
             self.args.resolve_dns = False
-            self.args.get_whois = False
+            self.args.resolve_whois = False
         self.c.res.resolve_dns = self.args.resolve_dns
-        self.c.res.resolve_whois = self.args.get_whois
+        self.c.res.resolve_whois = self.args.resolve_whois
 
         # Set the log level
         loglevel = getattr(logging, self.args.loglevel.upper(), None)
@@ -52,7 +98,9 @@ class CLI:
 
 
     def route_stability(self):
-        ana = RouteAnalyzer(self.c.measurements[0])  # TODO?
+        ana = RouteAnalyzer(self.c.measurements[0],
+                            self.args.tracecmp_both_unans, self.args.tracecmp_one_unans,
+                            self.args.tracecmp_single_endpoint)
         if len(self.c.measurements) > 1:
             print("Using first measurement only for route stability analysis!")
 

@@ -195,10 +195,14 @@ class ICMPTraceroute(MeasurementEntry):
 
     def __str__(self):
         result = list()
-        result.append(
-            'Traceroute(probe={t.probe}, from={t.from_addr}, to={t.dst_addr}, src={t.src_addr}, duration={t.duration})'.format(
-                t=self
-            ))
+        result.append('Traceroute for probe {t.probe}, duration {t.duration}:'.format(t=self))
+
+        fromaddr = 'From: ' + self.c.res.print_ip(self.from_addr)
+        if self.from_addr != self.src_addr:
+            fromaddr += ', internal address ' + str(self.src_addr)
+        result.append(fromaddr)
+        result.append('To: ' + self.c.res.print_ip(self.dst_addr))
+
         result.append('Hops:')
         for num, hop in self.hops.items():
             result.append(' ' * 2 + '{:>2}: '.format(num) + str(hop))
