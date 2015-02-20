@@ -103,10 +103,10 @@ class ICMPHop():
             return False
 
         # Have both hops even received answers?
-        if not self.answered and not other.answered:  # both hops unanswered
+        if not self.answered() and not other.answered():  # both hops unanswered
             return both_unanswered_equal
 
-        elif self.answered or not other.answered: # one hop unanswered
+        elif (not self.answered()) or (not other.answered()): # one hop unanswered
             return one_unanswered_equal
 
         # Both hops answered. Now see if these answers match.
@@ -128,9 +128,11 @@ class ICMPHop():
 
     @property
     def answers(self):
+        ret = []
         for a in self.all_answers:
             if not a.no_answer:
-                yield a
+                ret.append(a)
+        return ret
 
     def answered(self):
         if len(self.answers):

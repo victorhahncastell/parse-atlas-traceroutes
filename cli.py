@@ -106,6 +106,11 @@ class CLI:
 
 
     def route_stability(self):
+        if self.args.index and len(self.args.index) == 1:
+            print("Can't determine route changes with just one trace.")
+            print("What do you expect me to compare that trace to?")
+            exit(1)
+
         ana = RouteAnalyzer(self.c.measurements[0],
                             self.args.tracecmp_both_unans, self.args.tracecmp_one_unans,
                             self.args.tracecmp_single_endpoint,
@@ -123,8 +128,9 @@ class CLI:
             last_trace = ana.last_trace(probe)
 
             if len(route_changes):  # yeah, had some:
-                print('Route changed {}/{} times for probe {} ({}) in {}'.format(
-                    len(route_changes), len(ana.tracelist[probe]), probe, self.c.res.print_ip(first_trace.from_addr),
+                print('Route changed {}/{} times for probe {} ({}) in {}h'.format(
+                    len(route_changes), len(ana.tracelist[probe]) - 1,
+                    probe, self.c.res.print_ip(first_trace.from_addr),
                     last_trace.start - first_trace.start))
 
                 if self.args.details == 1:
@@ -144,7 +150,10 @@ class CLI:
                     print()
                     print()
             else:
-                print('Route stable for probe {} ({} traces)'.format(probe, len(ana.tracelist[probe])))
+                print('Route stable over {} transition for probe {} ({}) in {}h'.format(
+                    len(ana.tracelist[probe]) - 1,
+                    probe, self.c.res.print_ip(first_trace.from_addr),
+                    last_trace.start - first_trace.start))
 
 
     def trace_print(self):
