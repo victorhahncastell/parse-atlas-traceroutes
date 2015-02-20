@@ -74,7 +74,7 @@ class CLI:
                                 "consider two hops equal if any IP address appears in both sets of replies.")
         group.add_argument('--no-tracecmp-single-endpoint', dest='tracecmp_single_endpoint', action='store_false',
                            default=False,
-                           help="When comparing traceroutes and using more than one ping per hop, do not" +
+                           help="When comparing traceroutes and using more than one ping per hop, do not " +
                                 "consider two hops equal if any IP address appears in both sets of replies. Default.")
 
         self.args = parser.parse_args()
@@ -145,12 +145,12 @@ class CLI:
                     for traceA, traceB in route_changes:
                         print("Changeset {}:".format(route_changes.index((traceA, traceB)) + 1))
                         print(traceA)
+                        print()
                         print(traceB)
                         print()
-                    print()
-                    print()
+                        print()
             else:
-                print('Route stable over {} transition for probe {} ({}) in {}h'.format(
+                print('Route stable over {} transitions for probe {} ({}) in {}h'.format(
                     len(ana.tracelist[probe]) - 1,
                     probe, self.c.res.print_ip(first_trace.from_addr),
                     last_trace.start - first_trace.start))
