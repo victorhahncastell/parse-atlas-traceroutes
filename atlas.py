@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
-import logging
 from datetime import datetime
 from ipaddress import ip_address
-from collections import OrderedDict
+from collections import defaultdict, OrderedDict
+
+import logging
+l = logging.getLogger(__name__)
 
 class ICMPAnswer:
     # Unaccounted for (only sometimes present):
@@ -173,7 +175,18 @@ class ICMPHop():
 
 
 class MeasurementEntry:
-    pass
+    def __init__(self, controller, data, index = None):
+        self.c = controller
+        self.rawdata = data
+
+        # Per-probe index number of this measurement entry.
+        # If not set now, user shall set this as soon after construction as possible.
+        self.index = index
+
+    @property
+    def probe(self):
+        return self.rawdata['prb_id']
+
 
 class ICMPTraceroute(MeasurementEntry):
     # Unaccounted for:
@@ -185,17 +198,18 @@ class ICMPTraceroute(MeasurementEntry):
     # "msm_name": "Traceroute",
     # "paris_id": 7,
     # "prb_id": 11572,
-    def __init__(self, controller, data):
-        self.c = controller
+    def __init__(self, controller, data, index = None):
         # Just in case someone decides to pipe in bogus data
         msg = 'This is not an ICMP traceroute! THIS IS SPARTA!'
         assert data['type'] == 'traceroute' and data['proto'] == 'ICMP', msg
-        self.rawdata = data
-        self._hops = None
+
+        MeasurementEntry.__init__(self, controller, data, index)
+
+        self._hops = None # for lazy initialization
 
     def __str__(self):
         result = list()
-        result.append('Traceroute for probe {t.probe}, duration {t.duration}:'.format(t=self))
+        result.append('Traceroute {t.index} for probe {t.probe}, duration {t.duration}:'.format(t=self))
 
         fromaddr = 'From: ' + self.c.res.print_ip(self.from_addr)
         if self.from_addr != self.src_addr:
@@ -222,6 +236,10 @@ class ICMPTraceroute(MeasurementEntry):
 
 
     def sylvaneq(self, other):
+        """
+        I was about to put "legacy __eq__ implementation" here but that doesn't sound friendly enough.
+        So let's just say, an alternative one. :D
+        """
         if not isinstance(other, self.__class__):
             raise ValueError('Cannot compare ICMP Traceroute to {}.'.format(other.__class__))
         for num, hop in self.hops.items():
@@ -293,10 +311,6 @@ class ICMPTraceroute(MeasurementEntry):
         return (self.rawdata['dst_name'], self.dst_addr)
 
     @property
-    def probe(self):
-        return (self.rawdata['prb_id'])
-
-    @property
     def from_addr(self):
         """
         @return: The logical (external) address of the probe. This gets important if the probe is hidden behind NAT.
@@ -358,13 +372,23 @@ class Measurement:
         Parses this object's raw data and builds an object structure.
         Don't call this twice or you'll duplicate the measurement entries.
         """
+
+        # Each measurement entry will get a per-probe index number.
+        # Need to do some counting for this.
+        probeindices = defaultdict(int)
+
         for entry in self._rawdata:
             obj = self._entry_object(entry)  # if this is a valid entry we understand, build an object
             if obj:
-                # Finally, check if additional constraints are met and if so, return this object.
+                # Finally, check if additional constraints are met and if so, register this object and give it a
+                # per-probe index number.
                 valid = (not self.limit_probes or obj.probe in self.limit_probes)
                 if valid:
                     self.content.append(obj)
+
+                    obj.index = probeindices[obj.probe] # per-probe counting stuff, as mentioned.
+                    probeindices[obj.probe] += 1
+
             else:
                 l.warn("Raw data contains an entry I don't understand: " + entry)
 

@@ -44,7 +44,8 @@ class RouteAnalyzer():
     @ivar route_changes: A list of tuples showing route changes for each origin.
     """
     def __init__(self, measurement, hop_both_unanswered_equal = True, hop_one_unanswered_equal = True,
-                 hop_single_endpoint_equal = False):
+                 hop_single_endpoint_equal = False,
+                 index = None):
         """
         @param measurement: A measurement object (providing the data to analyze)
         @type measurement: Measurement
@@ -55,10 +56,13 @@ class RouteAnalyzer():
         self.route_changes = dict()
 
         # First, separate traces by originating probe and sort them chronologically
+        # Traces are *most probably* already sorted by date. This is just to make sure.
+        # It also means we (legitimably...?) trust the probe's time stamp over the JSON order.
         self.tracelist = defaultdict(OrderedDict)  # a dictionary with ordered dictionaries as values
         for trace in self.measurement.content:
             if isinstance(trace, ICMPTraceroute):  # only consider traceroute entries
-                self.tracelist[trace.probe][trace.start] = trace
+                if (not index) or (trace.index in index): # provide index filtering if enabled
+                    self.tracelist[trace.probe][trace.start] = trace
 
         # Compute one result for each originating probe
         for startpoint, traces in self.tracelist.items():
@@ -66,7 +70,7 @@ class RouteAnalyzer():
             l.info('Comparing routes for {}'.format(startpoint))
 
             for traceA, traceB in pairwise(traces.values()):  # a is an iterator on the current element, b on the next one
-                if traceA.equals(traceB,
+                if not traceA.equals(traceB,
                                  hop_both_unanswered_equal, hop_one_unanswered_equal, hop_single_endpoint_equal):
                     l.warn('Route changed for probe {} between {} and {}!'.format(startpoint, traceA.start, traceB.start))
                     self.route_changes[startpoint].append((traceA, traceB))

@@ -13,10 +13,19 @@ class CLI:
 
         parser.add_argument('--loglevel', default='ERROR', choices=['INFO', 'DEBUG', 'WARN', 'ERROR'],
                             help="Log level", type=str.upper)
-        parser.add_argument('--probe', '-p', type=int, action='append',
-                            help='Probe ID. If specified, only consider results from this probe.')
         parser.add_argument('--details', '-d', type=int, choices=[0,1,2,3], default=0,
                             help="Amount of details given with results.")
+
+        parser.add_argument('--index', '-i', type=int, nargs='*',
+                            help='Process measurement entries with these indices only. Probes have separate indices, ' +
+                            'i.e. if you specify "13 37 42" you will see traces no. 13, 37, 42 for each probe.')
+        # Indices will be provided automatically at measurement creation.
+        # Index limiting needs to be implemented by every action.
+
+        parser.add_argument('--probe', '-p', type=int, action='append',
+                            help='Probe ID. If specified, only consider results from this probe.')
+        # Note: Probe limiting is currently implemented in the Measurement objects. We don't even parse
+        # data from non-selected probes from JSON. This performs quite well but might prove to be a problem later...
 
         parser.add_argument('command', help="Select what to do.", choices=['stability', 'print'])
         parser.add_argument('file', type=FileType(), help='JSON file')
@@ -99,7 +108,8 @@ class CLI:
     def route_stability(self):
         ana = RouteAnalyzer(self.c.measurements[0],
                             self.args.tracecmp_both_unans, self.args.tracecmp_one_unans,
-                            self.args.tracecmp_single_endpoint)
+                            self.args.tracecmp_single_endpoint,
+                            self.args.index)
         if len(self.c.measurements) > 1:
             print("Using first measurement only for route stability analysis!")
 
@@ -140,7 +150,11 @@ class CLI:
     def trace_print(self):
         if self.args.preresolve:
             self.c.res.preresolve(self.c.all_addr())
+
         for measurement in self.c.measurements:
             for trace in measurement.content:
-                print(trace)
-                print()
+
+                # Print this measurement entry. Check if user has enabled index filtering.
+                if (not self.args.index) or (trace.index in self.args.index):
+                    print(trace)
+                    print()
