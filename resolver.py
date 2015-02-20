@@ -199,7 +199,7 @@ class Resolver:
 
         if self.resolve_whois:  # get Whois info
             whois = self.lookup_whois(addr)
-            if whois:
+            if whois and whois.asn != "NA":
                 whois_output = " in AS " + whois.asn + " " + whois.owner
 
         return addr_output + whois_output
