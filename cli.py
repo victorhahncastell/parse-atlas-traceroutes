@@ -9,16 +9,15 @@ class CLI:
     def __init__(self):
         # First, parse the command line arguments:
         from argparse import ArgumentParser, FileType
-
         parser = ArgumentParser()
+
         parser.add_argument('--loglevel', default='ERROR', choices=['INFO', 'DEBUG', 'WARN', 'ERROR'],
                             help="Log level", type=str.upper)
         parser.add_argument('--probe', '-p', type=int, action='append',
                             help='Probe ID. If specified, only consider results from this probe.')
         parser.add_argument('--details', '-d', type=int, choices=[0,1,2,3], default=0,
                             help="Amount of details given with results.")
-        parser.add_argument('--no-stable-both-unans',
-                            help="When comparing traceroutes, consides hops not equal if both received no answers.")
+
         parser.add_argument('command', help="Select what to do.", choices=['stability', 'print'])
         parser.add_argument('file', type=FileType(), help='JSON file')
 
