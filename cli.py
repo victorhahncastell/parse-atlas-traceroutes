@@ -30,27 +30,28 @@ class CLI:
         parser.add_argument('command', help="Select what to do.", choices=['stability', 'print'])
         parser.add_argument('file', type=FileType(), help='JSON file')
 
-        parser.add_argument('--numerical', '-n', action='store_const', const=True,
-                            help="Work offline, print stuff numerically, disable any lookups. " +
-                                 "Short for --no-resolve-dns and --no-get-whois.")
+        supergroup = parser.add_argument_group()
+        supergroup.add_argument('--numerical', '-n', action='store_const', const=True,
+                                help="Work offline, print stuff numerically, disable any lookups. " +
+                                "Short for --no-resolve-dns and --no-get-whois.")
 
-        group = parser.add_mutually_exclusive_group()
+        group = supergroup.add_mutually_exclusive_group()
         group.add_argument('--resolve-dns', dest='resolve_dns', action='store_true', default=True,
-                            help="Don't resolve reverse DNS names.")
+                           help="Resolve reverse DNS names. Default.")
         group.add_argument('--no-resolve-dns', dest='resolve_dns', action='store_false',
-                            help="Don't resolve reverse DNS names.")
+                           help="Don't resolve reverse DNS names.")
 
-        group = parser.add_mutually_exclusive_group()
+        group = supergroup.add_mutually_exclusive_group()
         group.add_argument('--resolve-whois', dest='resolve_whois', action='store_true', default=True,
-                            help="Provide Whois information on IP addresses. Default.")
+                           help="Provide Whois information on IP addresses. Default.")
         group.add_argument('--no-resolve-whois', dest='resolve_whois', action='store_false',
-                            help="Do not provide Whois information on IP addresses.")
+                           help="Do not provide Whois information on IP addresses.")
 
         group = parser.add_mutually_exclusive_group()
         group.add_argument('--preresolve', dest='preresolve', action='store_true', default=True,
-                            help="Try to resolve all IP addresses at once.")
+                           help="Try to resolve all IP addresses at once.")
         group.add_argument('--no-preresolve', dest='preresolve', action='store_false',
-                            help="Don't try to resolve all IP addresses at once.")
+                           help="Don't try to resolve all IP addresses at once.")
 
         group = parser.add_mutually_exclusive_group()
         group.add_argument('--tracecmp-both-unans', dest='tracecmp_both_unans', action='store_true', default=True,
@@ -76,6 +77,17 @@ class CLI:
                            default=False,
                            help="When comparing traceroutes and using more than one ping per hop, do not " +
                                 "consider two hops equal if any IP address appears in both sets of replies. Default.")
+
+        group = parser.add_mutually_exclusive_group()
+        group.add_argument('--tracecmp-strict-ip', action='store_true',                             # currently unused
+                           help='When comparing traceroutes, do a plain old (strict) IP comparison. Default.')
+        group.add_argument('--tracecmp-same-prefix', dest='tracecmp_same_prefix', action='store_true',
+                           help="When comparing traceroutes, consider IP addresses equal if they're on the same " +
+                           "subnet as published in the online whois database.")
+        group.add_argument('--tracecmp-same-as', dest='tracecmp_same_as', action='store_true',
+                           help="When comparing traceroutes, consider IP addresses equal if they're on the same " +
+                           "autonomous system.")
+
 
         self.args = parser.parse_args()
 
@@ -111,16 +123,25 @@ class CLI:
             print("What do you expect me to compare that trace to?")
             exit(1)
 
+        if self.args.preresolve:
+            all_addr = self.c.all_addr()
+
+            # preresolve everything needed for output (res.preresolve knows what the user wished)
+            if self.args.details >= 2:
+                self.c.res.preresolve(all_addr)
+
+            # explicitly preresolve whois if needed for comparison but not for output
+            if ( (self.args.tracecmp_same_prefix or self.args.tracecmp_same_as) and
+                     (not self.args.resolve_whois or self.args.details < 2) ):
+                self.c.res.preresolve_whois(all_addr)
+
         ana = RouteAnalyzer(self.c.measurements[0],
                             self.args.tracecmp_both_unans, self.args.tracecmp_one_unans,
                             self.args.tracecmp_single_endpoint,
+                            self.args.tracecmp_same_prefix, self.args.tracecmp_same_as,
                             self.args.index)
         if len(self.c.measurements) > 1:
             print("Using first measurement only for route stability analysis!")
-
-        if self.args.preresolve:
-            if self.args.details >= 2:
-                self.c.res.preresolve(self.c.all_addr())
 
         resultset = ana.route_changes.items()
         for probe, route_changes in resultset:

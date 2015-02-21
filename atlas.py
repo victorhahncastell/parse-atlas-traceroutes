@@ -80,12 +80,13 @@ class ICMPHop():
                         ip_output += ", "
                     ip_output += endpoint.ip
                 ip_output += "]"
-            return '{} TTL: {h.ttl:.2f} RTT: {h.rtt:.2f}ms'.format(ip_output, h=self)  # TODO: There could be multiple endpoints
+            return '{} TTL: {h.ttl:.2f} RTT: {h.rtt:.2f}ms'.format(ip_output, h=self)
 
     def __eq__(self, other):
         return self.equals(other)
 
-    def equals(self, other, both_unanswered_equal = True, one_unanswered_equal = False, single_endpoint_equal = False):
+    def equals(self, other, both_unanswered_equal = True, one_unanswered_equal = False, single_endpoint_equal = False,
+               same_prefix_equal = False, same_as_equal = False):
         """
         Compare two hops. This function features a bunch of boolean "leniency options" which cause hops to be
         considered equal more easily. Set all of them to false to get a relatively strict comparison.
@@ -96,7 +97,13 @@ class ICMPHop():
         @param one_unanswered_equal: If true, hops are considered equal if they effectively cannot compared because
             one of them did not receive any answers while the other did.
         @param single_endpoint_equal: If False, hops are considered equal if the endpointsets are exactly equal.
-         If True, only one equal endpoint is required.
+            If True, only one equal endpoint is required.
+        @param same_prefix_equal: If true, IP address will be abtracted to published IP subnets before comparison.
+            If abstraction is not possible (e.g. for private address space or networks not present in the public
+            databse) two addresses in non-abstractable network will be considered equal
+            while one abstractable and one non-abstractable address will not be.
+            (Implementation note: This is the default behaviour using cymruwhois and ignoring the problem :D )
+        @param same_as_equal: If true, IP address will be abstracted to published autonomous systems before comparison.
         @rtype: bool
         """
         if not isinstance(other, self.__class__):
@@ -110,14 +117,32 @@ class ICMPHop():
             return one_unanswered_equal
 
         # Both hops answered. Now see if these answers match.
-        if self.endpointset != other.endpointset:
-            if not single_endpoint_equal: return False
+        
+        if same_prefix_equal or same_as_equal:  # abstracting addresses as user specified to get a more general view
+            myendpoints = set()
+            otherendpoints = set()
+            for endpoint in self.endpointset:
+                if same_prefix_equal:
+                    myendpoints.add(self.c.res.lookup_whois(endpoint).prefix)
+                elif same_as_equal:
+                    myendpoints.add(self.c.res.lookup_whois(endpoint).asn)
+            for endpoint in other.endpointset:
+                if same_prefix_equal:
+                    otherendpoints.add(self.c.res.lookup_whois(endpoint).prefix)
+                elif same_as_equal:
+                    otherendpoints.add(self.c.res.lookup_whois(endpoint).asn)
 
-            for myendpoint in self.endpointset:
-                if myendpoint in other.endpointset:  # at least one shared endpoint. Fair enough.
-                    return True
-        else:
-            return True  # all passed! Woohoo!
+        else:                            # no abstraction chosen - will do an exact IP address comparison
+            myendpoints = self.endpointset
+            otherendpoints = other.endpointset
+
+        if myendpoints == otherendpoints:         # full match - what more could you wish for
+            return True
+        else:                                     # no full match
+            if single_endpoint_equal:             # has the user asked us to be lenient?
+                return bool(myendpoints.intersection(otherendpoints))  # will be true if at least one endpoint is common
+            else:
+                return False
 
     @property
     def all_answers(self):
@@ -260,7 +285,8 @@ class ICMPTraceroute(MeasurementEntry):
 
 
     def equals(self, other,
-               hop_both_unanswered_equal = True, hop_one_unanswered_equal = True, hop_single_endpoint_equal = False):
+               hop_both_unanswered_equal = True, hop_one_unanswered_equal = True, hop_single_endpoint_equal = False,
+               hop_same_prefix_equal = False, hop_same_as_equal = False):
         if not isinstance(other, self.__class__):
             return False
 
@@ -276,15 +302,17 @@ class ICMPTraceroute(MeasurementEntry):
 
             elif myhop is None or otherhop is None:        # One trace ended prematurely.
                 if myhop is None: presenthop = otherhop    # Let's see if the other might effectively have ended as
-                if otherhop is None: presenthop = myhop     # well. This accounts for missed last hops, causing bogus
+                if otherhop is None: presenthop = myhop    # well. This accounts for missed last hops, causing bogus
                                                            # "no-answers" up to max TTL.
-                if presenthop.answered:
-                    return False   # One trace ended while the other still has real, answered hops. Those can never be equal!
+                if presenthop.answered:  # One trace ended while the other still has real, answered hops.
+                    return False         # Those can never be equal!
                 else:
                     continue       # Might be just some trailing no-answers. Let's keep looking...
 
-            if not myhop.equals(otherhop, hop_both_unanswered_equal, hop_one_unanswered_equal, hop_single_endpoint_equal):
-                return False                         # if a pair of hops is not equal, so is the trace
+            if not myhop.equals(otherhop,
+                                hop_both_unanswered_equal, hop_one_unanswered_equal, hop_single_endpoint_equal,
+                                hop_same_prefix_equal, hop_same_as_equal):
+                return False  # if one pair of hops is not equal, same goes for the whole traces
 
 
     @property

@@ -45,6 +45,7 @@ class RouteAnalyzer():
     """
     def __init__(self, measurement, hop_both_unanswered_equal = True, hop_one_unanswered_equal = True,
                  hop_single_endpoint_equal = False,
+                 hop_same_prefix_equal = False, hop_same_as_equal = False,
                  index = None):
         """
         @param measurement: A measurement object (providing the data to analyze)
@@ -72,7 +73,8 @@ class RouteAnalyzer():
             for traceA, traceB in pairwise(traces.values()):  # a is an iterator on the current element, b on the next one
                 pass
                 if not traceA.equals(traceB,
-                                     hop_both_unanswered_equal, hop_one_unanswered_equal, hop_single_endpoint_equal):
+                                     hop_both_unanswered_equal, hop_one_unanswered_equal, hop_single_endpoint_equal,
+                                     hop_same_prefix_equal, hop_same_as_equal):
                     l.warn('Route changed for probe {} between {} and {}!'.format(startpoint, traceA.start, traceB.start))
                     self.route_changes[startpoint].append((traceA, traceB))
                 else:

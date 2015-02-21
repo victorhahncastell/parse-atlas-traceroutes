@@ -19,56 +19,46 @@ class Resolver:
         self.preresolve_addrs = []
         self.dnspython_present = False
 
-    @property
-    def resolve_dns(self):
-        return self._resolve_dns
-
-    @resolve_dns.setter
-    def resolve_dns(self, value):
-        self._resolve_dns = value
         global dns  # for import
-        if self.resolve_dns:
-            # Standard library DNS resolve stuff
-            import socket
+        # Standard library DNS resolve stuff
+        import socket
 
-            self.socket = socket
-            self.socket.setdefaulttimeout(1)
+        self.socket = socket
+        self.socket.setdefaulttimeout(1)
 
-            try:  # Speedy DNS resolver
-                import dns.resolver
-                import dns.reversename
+        try:  # Speedy DNS resolver
+            import dns.resolver
+            import dns.reversename
 
-                self.dnspython_present = True
-            except ImportError as e:
-                l.warn("Could not load module dnspython. DNS resolution may be quite slow. Error was: " + str(e))
-            if self.dnspython_present:
-                self.dns_client = dns.resolver.Resolver()
-                self.dns_client.nameservers = self.nameservers
-                self.dns_client.lifetime = 1  # don't spend more than a second per query
+            self.dnspython_present = True
+        except ImportError as e:
+            l.warn("Could not load module dnspython. DNS resolution may be quite slow. Error was: " + str(e))
+        if self.dnspython_present:
+            self.dns_client = dns.resolver.Resolver()
+            self.dns_client.nameservers = self.nameservers
+            self.dns_client.lifetime = 1  # don't spend more than a second per query
 
-    @property
-    def resolve_whois(self):
-        return self._resolve_whois
-
-    @resolve_whois.setter
-    def resolve_whois(self, value):
-        self._resolve_whois = value
         global cymruwhois
-        if self.resolve_whois:
-            try:  # Whois
-                import cymruwhois
-            except ImportError as e:
-                l.error(
-                    "Could not load module cymruwhois. Whois information (AS etc.) will not be provided. Error was: " + str(
-                        e))
-                self.resolve_whois = False
+        try:  # Whois
+            import cymruwhois
+        except ImportError as e:
+            l.error(
+                "Could not load module cymruwhois. Whois information (AS etc.) will not be provided. Error was: " + str(
+                    e))
+            self.resolve_whois = False
+
 
     def preresolve(self, addrs, concurrent_threads=100):
         if self.resolve_dns:
-            PreresolveManager(list(addrs), self.lookup_dns, 1, concurrent_threads)
+            self.preresolve_dns(addrs, concurrent_threads)
         if self.resolve_whois:
-            PreresolveManager(list(addrs), self.lookup_whois, 100, concurrent_threads)
+            self.preresolve_whois(addrs, concurrent_threads)
 
+    def preresolve_dns(self, addrs, concurrent_threads=100):
+        PreresolveManager(list(addrs), self.lookup_dns, 1, concurrent_threads)
+
+    def preresolve_whois(self, addrs, concurrent_threads=10):
+        PreresolveManager(list(addrs), self.lookup_whois, 100, concurrent_threads)
 
     def lookup_dns(self, addr):
         """
@@ -92,6 +82,7 @@ class Resolver:
         if addr in self.preresolved_dns:  # answer already in cache?
             ret = self.preresolved_dns[addr]
         else:
+            l.debug("Cache miss on single DNS lookup for address " + str(addr) + ".")
             answer = self._lookup_dns(addr)
             self.preresolved_dns[addr] = answer   # cache this shit!
             ret = answer
@@ -127,7 +118,7 @@ class Resolver:
         """
         Get whois information on an IP address.
         @param addr: The IP address or a list of addresses to resolve.
-        @return: Structures whois data as returned by cymruwhois (includes eg. .asn, .owner)
+        @return: Structures whois data as returned by cymruwhois (includes eg. .asn, .owner) or False
         @rtype: dictionary
         """
         if isinstance(addr, (str, IPv4Address, IPv6Address)):        # just one address given as arg
@@ -144,6 +135,7 @@ class Resolver:
         if addr in self.preresolved_whois:         # answer already in cache?
             ret = self.preresolved_whois[addr]
         else:                                      # actually perform lookup
+            l.debug("Cache miss on single whois lookup for address " + str(addr) + ".")
             try:
                 ret = client.lookup(addr)
             except Exception as e:
@@ -153,9 +145,9 @@ class Resolver:
         self.preresolve_lock_whois[addr].release()
         return ret
 
-    def _lookup_whois_multiple(self, addr):
+    def _lookup_whois_multiple(self, addr_list):
         client = cymruwhois.Client()
-        for item in addr:
+        for item in addr_list:
             item = ip_address(item)
             if item not in self.preresolve_lock_whois:
                 self.preresolve_lock_whois[item] = threading.Lock()
@@ -163,21 +155,21 @@ class Resolver:
 
             ret = dict()
             if ip_address(item) in self.preresolved_whois:         # answer already in cache?
-                ret[item] = self.preresolved_whois[addr]
-                addr.remove(item) # remove found items from the to do list (will use this later for online lookups)
+                ret[item] = self.preresolved_whois[item]
+                addr_list.remove(item) # remove found items from the to do list (will use this later for online lookups)
 
-        if len(addr) > 0:                              # is there still something to look up online?
+        if len(addr_list) > 0:                              # is there still something to look up online?
             try:
-                online = client.lookupmany_dict(addr)
+                online = client.lookupmany_dict(addr_list)
             except Exception as e:
-                l.warn("Mass whois lookup failed for " + str(addr) + ". Error was: " + str(e))
+                l.warn("Mass whois lookup failed for " + str(addr_list) + ". Error was: " + str(e))
                 online = dict()
             ret.update(online)
 
             for this_addr, this_result in online.items():      # cache this shit!
                 self.preresolved_whois[ip_address(this_addr)] = this_result
 
-        for item in addr:
+        for item in addr_list:
             item = ip_address(item)
             self.preresolve_lock_whois[item].release()
 
