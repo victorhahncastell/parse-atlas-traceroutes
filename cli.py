@@ -157,13 +157,12 @@ class CLI:
                 if self.args.details == 1:
                     print("Indices of changed traces (change is from this index to the next): ", end='')
                     for traceA, traceB in route_changes:
-                        trace_keys = list(ana.tracelist[probe].keys())
-                        index = trace_keys.index(traceA.start)
-                        print(index, end=' ')
+                        print(traceA.index, end=' ')
                     print()
                 elif self.args.details == 2:
                     print("Printing changesets:")
                     for traceA, traceB in route_changes:
+                        print()
                         print("Changeset {}:".format(route_changes.index((traceA, traceB)) + 1))
                         print(traceA)
                         print()
